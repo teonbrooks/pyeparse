@@ -14,6 +14,7 @@ from .viz import plot_epochs
 from .utils import pupil_kernel
 from ._fixes import string_types, nanmean, nanstd
 from .parallel import parallel_func
+from ._baseraw import read_raw, _BaseRaw
 
 
 class InterestAreas(OrderedDict):
@@ -21,9 +22,9 @@ class InterestAreas(OrderedDict):
 
     Parameters
     ----------
-    raw : instance of Raw | list
-        The raw instance to create epochs from. Can also be a list of raw
-        instances to use.
+    raw : filename | instance of Raw
+        The filename of the raw file or a Raw instance to create InterestAreas
+        from.
     ias : str | ndarray (n_ias, 7)
         The interest areas. If str, this is the path to the interest area file.
         Only .ias formats are currently supported. If array, number of row must
@@ -45,8 +46,10 @@ class InterestAreas(OrderedDict):
         The epoched dataset.
         Trial x IAS x fixations/saccades
     """
-    def __init__(self, raw, ias, event_id=42):
-        
+    def __init__(self, raw, ias, event_id=42, dep='fix'):
+        if isinstance(raw, str):
+            raw = read_raw(raw)
+        assert isinstance(raw, _BaseRaw)
         trial_ids = raw.find_events('TRIALID', 1)
         self.n_trials = n_trials = trial_ids.shape[0]
         self.n_ias = n_ias = ias.shape[0]
