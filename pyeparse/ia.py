@@ -3,9 +3,11 @@
 #
 # License: BSD (3-clause)
 
-from copy import copy, deepcopy
+from copy import copy
 import numpy as np
+from numpy.lib.recfunctions import merge_arrays
 from collections import OrderedDict
+from pandas import DataFrame, concat
 
 from ._fixes import string_types
 from ._baseraw import read_raw, _BaseRaw
@@ -46,7 +48,7 @@ class InterestAreas(object):
                             % type(raw))
 
         trial_ids = raw.find_events('TRIALID', 1)
-        self.n_trials = n_trials = trial_ids.shape[0]
+        self.n_epochs = n_epochs = trial_ids.shape[0]
         self.n_ias = n_ias = ias.shape[0]
         last = trial_ids[-1].copy()
         last[0] = str(int(last[0]) + 10000)
@@ -58,81 +60,96 @@ class InterestAreas(object):
         self._trials = trials = zip(t_starts, t_ends)
         self.trial_durations = [end - start for start, end in trials]
 
-        ias_ = [[list() for ia in range(n_ias)] for _ in range(n_trials)]
-        fix_order = [list() for _ in range(n_trials)]
+        ias_ = [[list() for ia in range(n_ias)] for _ in range(n_epochs)]
+        fix_order = [list() for _ in range(n_epochs)]
 
         if depmeas == 'fix':
             depmeas = raw.discrete['fixations']
             labels = ['eye', 'stime', 'etime', 'axp', 'ayp']
-            n_meas = len(labels)
-            for meas in depmeas:
-                eye, stime, etime, xp, yp = meas
-                meas = np.array(meas)
+            depmeas = DataFrame(depmeas)
+            for _, meas in depmeas.iterrows():
                 for jj, trial in enumerate(trials):
                     tstart, tend = trial
-                    if tstart < stime * 1000 < tend:
-                        fix_order[jj].append(int(stime * 1000))                                
+                    if tstart < meas['stime'] * 1000 < tend:
+                        fix_order[jj].append(int(meas['stime'] * 1000))                                
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
-                            if int(ia_left) < int(xp) < int(ia_right) \
-                                and int(ia_top) < int(yp) < int(ia_bottom):
-                                ias_[jj][ii] = meas
-            for jj in range(n_trials):
+                            if int(ia_left) < int(meas['axp']) < int(ia_right) \
+                            and int(ia_top) < int(meas['ayp']) < int(ia_bottom):
+                                ias_[jj][ii].append(meas)
+            labels.append('order')
+            n_meas = len(labels)
+            for jj in range(n_epochs):
                 for ii in range(n_ias):
-                    if isinstance(ias_[jj][ii], list):
-                        ias_[jj][ii] = np.rec.fromarrays(np.ones(n_meas) *
-                                                         np.nan, names=labels)
+                    if isinstance(ias_[jj][ii], list) and \
+                        len(ias_[jj][ii]) == 0:
+                        ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
+                                                        np.nan, labels)
+                    else:
+                        for kk, fix in enumerate(ias_[jj][ii]):
+                            fix['order'] = kk
+                            ias_[jj][ii][kk] = fix
+                        ias_[jj][ii] = DataFrame(ias_[jj][ii])
+
+
         elif depmeas == 'sac':
             depmeas = raw.discrete['saccades']
             labels = ['eye', 'stime', 'etime', 'sxp', 'syp',
                       'exp', 'eyp', 'pv']
-            n_meas = len(labels)
-            for meas in depmeas:
-                eye, stime, etime, sxp, syp, exp, eyp, pv = meas
-                meas = np.array(meas)
+            depmeas = DataFrame(depmeas)
+            for _, meas in depmeas.iterrows():
                 for jj, trial in enumerate(trials):
                     tstart, tend = trial
-                    if tstart < stime * 1000 < tend:
-                        fix_order[jj].append(int(stime * 1000))                                
+                    if tstart < meas['stime'] * 1000 < tend:
+                        fix_order[jj].append(int(meas['stime'] * 1000))                                
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
-                            if int(ia_left) < int(sxp) < int(ia_right) \
-                                and int(ia_top) < int(syp) < int(ia_bottom):
-                                ias_[jj][ii] = meas
-            for jj in range(n_trials):
+                            if int(ia_left) < int(meas['sxp']) < int(ia_right) \
+                            and int(ia_top) < int(meas['syp']) < int(ia_bottom):
+                                ias_[jj][ii].append(meas)
+            labels.append('order')
+            n_meas = len(labels)
+            for jj in range(n_epochs):
                 for ii in range(n_ias):
-                    if isinstance(ias_[jj][ii], list):
-                        ias_[jj][ii] = np.rec.fromarrays(np.ones(n_meas) *
-                                                         np.nan, names=labels)
+                    if isinstance(ias_[jj][ii], list) and \
+                        len(ias_[jj][ii]) == 0:
+                        ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
+                                                        np.nan, columns=labels)
+                    else:
+                        for kk, fix in enumerate(ias_[jj][ii]):
+                            fix['order'] = kk
+                            ias_[jj][ii][kk] = fix
+                        ias_[jj][ii] = DataFrame(ias_[jj][ii])
 
         ia_labels = list(ias[:, -1])
         # ordered dict
-        temp = [IA(zip(ia_labels, trial)) for trial in ias_]
-        self._data = temp
+        self._data = [IA(zip(ia_labels, trial)) for trial in ias_]
 
     def __repr__(self):
-        return '<IA | {0} Trials x {1} IAs>'.format(self.n_trials, self.n_ias)
+        return '<IA | {0} Trials x {1} IAs>'.format(self.n_epochs, self.n_ias)
 
     def __len__(self):
         return len(self._data)
 
     @property
     def shape(self):
-        return (self.n_trials, self.n_ias)
+        return (self.n_epochs, self.n_ias)
 
     def __getitem__(self, idx):
         if isinstance(idx, string_types):
-            if not idx in self._data[0]:
+            if idx not in self._data[0]:
                 raise KeyError("'%s' is not found." % idx)
-            return np.hstack([datum[idx] for datum in self._data])
+            data = concat([datum[idx] for datum in self._data])
+            return data
         elif isinstance(idx, int):
-            return self._data[idx]
+            data = self._data[idx]
+            return data
         elif isinstance(idx, slice):
             inst = copy(self)
             inst._data = self._data[idx]
-            inst.n_trials = len(inst._data)
+            inst.n_epochs = len(inst._data)
             return inst
         else:
             raise TypeError('index must be an int, string, or slice')
@@ -147,8 +164,9 @@ class IA(OrderedDict):
 
 
 def read_ia(filename):
-    ia = open(filename).readlines()
-    idx = [i for i, line in enumerate(ia) if line.startswith('Type') ]
+    with open(filename) as FILE:
+        ia = FILE.readlines()
+    idx = [i for i, line in enumerate(ia) if line.startswith('Type')]
     if len(idx) > 1:
         raise IOError('Too many headers provided in this file.')
     ias = ia[idx[0]+1:]
