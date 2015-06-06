@@ -5,11 +5,9 @@
 
 from copy import copy
 import numpy as np
-from numpy.lib.recfunctions import merge_arrays
-from collections import OrderedDict
 from pandas import DataFrame, concat
 
-from ._fixes import string_types
+from ._fixes import string_types, OrderedDict
 from ._baseraw import read_raw, _BaseRaw
 
 
@@ -28,9 +26,6 @@ class InterestAreas(object):
         # RECTANGLE id left top right bottom [label]
     ias_names : None | list of str
         Interest area name. If None, the areas will be indexed (0, n-1).
-    event_id : int | dict
-        The event ID to use. Can be a dict to supply multiple event types
-        by name.
     depmeas : str
         Dependent measure. 'fix' for fixations, 'sac' for saccades.
 
@@ -40,7 +35,7 @@ class InterestAreas(object):
         The epoched dataset.
         Trial x IAS x fixations/saccades
     """
-    def __init__(self, raw, ias, event_id=42, depmeas='fix'):
+    def __init__(self, raw, ias, depmeas='fix'):
         if isinstance(raw, string_types):
             raw = read_raw(raw)
         if not isinstance(raw, _BaseRaw):
@@ -52,8 +47,6 @@ class InterestAreas(object):
         self.n_ias = n_ias = ias.shape[0]
         last = trial_ids[-1].copy()
         last[0] = str(int(last[0]) + 10000)
-        msg = last[-1].split()
-        last[-1] = ' '.join([msg[0], str(int(msg[-1]) + 1)])
         trial_ids = np.vstack((trial_ids, last))
         t_starts = [int(trial_ids[i][0]) for i, _ in enumerate(trial_ids[:-1])]
         t_ends = [int(trial_ids[i+1][0]) for i, _ in enumerate(trial_ids[:-1])]
@@ -85,7 +78,7 @@ class InterestAreas(object):
                     if isinstance(ias_[jj][ii], list) and \
                         len(ias_[jj][ii]) == 0:
                         ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
-                                                        np.nan, labels)
+                                                        np.nan, columns=labels)
                     else:
                         for kk, fix in enumerate(ias_[jj][ii]):
                             fix['order'] = kk
