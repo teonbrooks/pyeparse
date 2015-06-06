@@ -2,12 +2,15 @@
 #
 # License: BSD (3-clause)
 
+import os.path as op
+
 import pyeparse as pp
 import numpy as np
 
-fname = '../pyeparse/tests/data/test_raw.edf'
+path = op.dirname(__file__)
+fname = op.join(path, '../pyeparse/tests/data/test_raw.edf')
 
-raw = pp.Raw(fname)
+raw = pp.read_raw(fname)
 
 # visualize initial calibration
 raw.plot_calibration(title='5-Point Calibration')
