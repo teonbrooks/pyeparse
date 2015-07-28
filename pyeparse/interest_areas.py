@@ -64,7 +64,7 @@ class InterestAreas(object):
                 for jj, trial in enumerate(trials):
                     tstart, tend = trial
                     if tstart < meas['stime'] * 1000 < tend:
-                        fix_order[jj].append(int(meas['stime'] * 1000))                                
+                        fix_order[jj].append(int(meas['stime'] * 1000))
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
@@ -95,7 +95,7 @@ class InterestAreas(object):
                 for jj, trial in enumerate(trials):
                     tstart, tend = trial
                     if tstart < meas['stime'] * 1000 < tend:
-                        fix_order[jj].append(int(meas['stime'] * 1000))                                
+                        fix_order[jj].append(int(meas['stime'] * 1000))
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
@@ -166,3 +166,21 @@ def read_ia(filename):
     ias = np.array([line.split() for line in ias])
 
     return ias
+
+class ReadingMixin(object):
+    def _define_gaze(self):
+        fix_num = trial['order']
+        maxword = np.maximum.accumulate(trial['order'])
+        gaze = fix_num <= maxword
+
+    def get_first_fix(self, ia, idx=None):
+
+    def get_go_past(self, ia, idx=None):
+        fixs = self[ia]
+        if idx is None:
+            idx = np.arange(self.shape[0])
+        fixs = fixs[idx]
+        trials = np.unique(fixs['trial'])
+        for ii in trials:
+            trial = trials[trials['trial'] == ii]
+            maxword = np.maximum.accumulate(trial['order'])
