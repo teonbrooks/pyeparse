@@ -55,56 +55,61 @@ class InterestAreas(object):
         self.trial_durations = [end - start for start, end in trials]
 
         ias_ = [[list() for ia in range(n_ias)] for _ in range(n_epochs)]
-        trial_no = list()
-
-        fix_order = [list() for _ in range(n_epochs)]
-        first_fix_cands = [[list() for ia in range(n_ias)]
-                            for _ in range(n_epochs)]
 
         if depmeas == 'fix':
             depmeas = raw.discrete['fixations']
             labels = ['eye', 'stime', 'etime', 'axp', 'ayp']
             depmeas = DataFrame(depmeas)
-            int_area = np.ones((1, len(depmeas))) * np.nan
-            max_ias = np.ones((1, len(depmeas))) * np.nan
+            # adding new columns
+            fix_pos = np.ones((1, len(depmeas))) * np.nan
+            max_pos = np.ones((1, len(depmeas))) * np.nan
+            fix_dict = [list() for _ in range(n_epochs)]
+            trial_no = np.ones((1, len(depmeas))) * np.nan
+
             for idx, meas in depmeas.iterrows():
                 for jj, trial in enumerate(trials):
                     tstart, tend = trial
                     max_ia = 0
                     if tstart < meas['stime'] * 1000 < tend:
-                        trial_no.append(jj)
-                        fix_order[jj].append(int(meas['stime'] * 1000))
+
+                        trial_no[idx] = jj
+                        fix_order[idx] =
+                        fix_dict[jj].append(int(meas['stime'] * 1000))
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
                             if int(ia_left) < int(meas['axp']) < int(ia_right) \
                             and int(ia_top) < int(meas['ayp']) < int(ia_bottom):
-                                int_area[idx] = ii
+                                fix_pos[idx] = ii
                                 ias_[jj][ii].append(meas)
                                 # TO-DO: think about cases where fix outside
                                 # interest areas
-                                if ia > max_ia:
+                                if ii > max_ia:
                                     max_ia = ii
-                                    max_ias[idx] = max_ia
+                                    max_pos[idx] = max_ia
                                 else:
-                                    max_ias[idx] = max_ia
-
-            labels.append('order')
-            n_meas = len(labels)
-            fix_order = [dict(zip(epoch, range(len(epoch))))
+                                    max_pos[idx] = max_ia
+                                break
+                        break
+            concat([depmeas, fix_pos, max_pos], axis=1)
+            # labels.append('order')
+            # n_meas = len(labels)
+            fix_dict = [dict(zip(epoch, range(len(epoch))))
                          for epoch in fix_order]
+            fix_order = [fix_dict[meas['trial']][meas['stime']] for _, meas in
+                         depmeas.iterrows()]
 
-            for jj in range(n_epochs):
-                for ii in range(n_ias):
-                    if isinstance(ias_[jj][ii], list) and \
-                        len(ias_[jj][ii]) == 0:
-                        ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
-                                                        np.nan, columns=labels)
-                    else:
-                        for fix, ordering in zip(ias_[jj][ii], fix_order):
-                            fix['order'] = ordering[fix['stime']]
-                            ias_[jj][ii][kk] = fix
-                        ias_[jj][ii] = DataFrame(ias_[jj][ii])
+            # for jj in range(n_epochs):
+            #     for ii in range(n_ias):
+            #         if isinstance(ias_[jj][ii], list) and \
+            #             len(ias_[jj][ii]) == 0:
+            #             ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
+            #                                             np.nan, columns=labels)
+            #         else:
+            #             for fix, ordering in zip(ias_[jj][ii], fix_order):
+            #                 fix['order'] = ordering[fix['stime']]
+            #                 ias_[jj][ii][kk] = fix
+            #             ias_[jj][ii] = DataFrame(ias_[jj][ii])
 
 
         elif depmeas == 'sac':
