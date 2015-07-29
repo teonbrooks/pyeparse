@@ -24,8 +24,9 @@ class InterestAreas(object):
         Only .ias formats are currently supported. If array, number of row must
         be number of interest areas. The columns are as follows:
         # RECTANGLE id left top right bottom [label]
-    ias_names : None | list of str
-        Interest area name. If None, the areas will be indexed (0, n-1).
+    ia_labels : None | list of str
+        Interest area name. If None, the labels from the interest area file
+        will be used.
     depmeas : str
         Dependent measure. 'fix' for fixations, 'sac' for saccades.
 
@@ -35,7 +36,7 @@ class InterestAreas(object):
         The epoched dataset.
         Trial x IAS x fixations/saccades
     """
-    def __init__(self, raw, ias, depmeas='fix'):
+    def __init__(self, raw, ias, ia_labels=None, depmeas='fix'):
         if isinstance(raw, string_types):
             raw = read_raw(raw)
         if not isinstance(raw, _BaseRaw):
@@ -175,6 +176,7 @@ class ReadingMixin(object):
 
     def get_first_fix(self, ia, idx=None):
 
+        return self
     def get_go_past(self, ia, idx=None):
         fixs = self[ia]
         if idx is None:
