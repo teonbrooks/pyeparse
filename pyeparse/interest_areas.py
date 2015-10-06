@@ -73,7 +73,6 @@ class InterestAreas(object):
                     if tstart < meas['stime'] * 1000 < tend:
 
                         trial_no[idx] = jj
-                        fix_order[idx] =
                         fix_dict[jj].append(int(meas['stime'] * 1000))
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
@@ -91,7 +90,8 @@ class InterestAreas(object):
                                     max_pos[idx] = max_ia
                                 break
                         break
-            concat([depmeas, fix_pos, max_pos], axis=1)
+            depmeas = concat([depmeas, fix_pos, max_pos], axis=1)
+            asdf
             # labels.append('order')
             # n_meas = len(labels)
             fix_dict = [dict(zip(epoch, range(len(epoch))))
