@@ -5,7 +5,10 @@
 
 from copy import copy
 import numpy as np
-from pandas import DataFrame, concat
+try:
+    from pandas import DataFrame, concat
+except ImportError:
+    raise ImportError('Pandas is required for InterestAreas.')
 
 from ._fixes import string_types, OrderedDict
 from ._baseraw import read_raw, _BaseRaw
@@ -37,11 +40,18 @@ class InterestAreas(object):
         Trial x IAS x fixations/saccades
     """
     def __init__(self, raw, ias, ia_labels=None, depmeas='fix'):
+
+        # TEMP
+        if depmeas != 'fix':
+            raise NotImplementedError
+
         if isinstance(raw, string_types):
             raw = read_raw(raw)
-        if not isinstance(raw, _BaseRaw):
+        elif not isinstance(raw, _BaseRaw):
             raise TypeError('raw must be Raw instance of filename, not %s'
                             % type(raw))
+        if isinstance(ias, string_types):
+            ias = read_ia(ias)
 
         trial_ids = raw.find_events('TRIALID', 1)
         self.n_epochs = n_epochs = trial_ids.shape[0]
@@ -54,33 +64,30 @@ class InterestAreas(object):
         self._trials = trials = zip(t_starts, t_ends)
         self.trial_durations = [end - start for start, end in trials]
 
-        ias_ = [[list() for ia in range(n_ias)] for _ in range(n_epochs)]
-
         if depmeas == 'fix':
             depmeas = raw.discrete['fixations']
             labels = ['eye', 'stime', 'etime', 'axp', 'ayp']
             depmeas = DataFrame(depmeas)
             # adding new columns
-            fix_pos = np.ones((1, len(depmeas))) * np.nan
-            max_pos = np.ones((1, len(depmeas))) * np.nan
-            fix_dict = [list() for _ in range(n_epochs)]
-            trial_no = np.ones((1, len(depmeas))) * np.nan
+            # fix_pos is the IA number
+            fix_pos = np.ones((len(depmeas), 1)) * np.nan
+            # max_pos is the maximum IA visited
+            max_pos = np.ones((len(depmeas), 1)) * np.nan
+            trial_no = np.ones((len(depmeas), 1)) * np.nan
 
             for idx, meas in depmeas.iterrows():
                 for jj, trial in enumerate(trials):
                     tstart, tend = trial
+                    # max_ia is incorrect atm
                     max_ia = 0
                     if tstart < meas['stime'] * 1000 < tend:
-
                         trial_no[idx] = jj
-                        fix_dict[jj].append(int(meas['stime'] * 1000))
                         # RECTANGLE id left top right bottom [label]
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
                             if int(ia_left) < int(meas['axp']) < int(ia_right) \
                             and int(ia_top) < int(meas['ayp']) < int(ia_bottom):
                                 fix_pos[idx] = ii
-                                ias_[jj][ii].append(meas)
                                 # TO-DO: think about cases where fix outside
                                 # interest areas
                                 if ii > max_ia:
@@ -90,28 +97,19 @@ class InterestAreas(object):
                                     max_pos[idx] = max_ia
                                 break
                         break
-            depmeas = concat([depmeas, fix_pos, max_pos], axis=1)
-            asdf
-            # labels.append('order')
-            # n_meas = len(labels)
-            fix_dict = [dict(zip(epoch, range(len(epoch))))
-                         for epoch in fix_order]
-            fix_order = [fix_dict[meas['trial']][meas['stime']] for _, meas in
-                         depmeas.iterrows()]
+            dur = depmeas['etime'] - depmeas['stime']
+            depmeas = map(DataFrame, [depmeas, dur, fix_pos, max_pos, trial_no])
+            labels.extend(['dur', 'fix_pos', 'max_pos', 'trial_no'])
+            depmeas = concat(depmeas, axis=1)
+            depmeas.columns = labels
 
-            # for jj in range(n_epochs):
-            #     for ii in range(n_ias):
-            #         if isinstance(ias_[jj][ii], list) and \
-            #             len(ias_[jj][ii]) == 0:
-            #             ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
-            #                                             np.nan, columns=labels)
-            #         else:
-            #             for fix, ordering in zip(ias_[jj][ii], fix_order):
-            #                 fix['order'] = ordering[fix['stime']]
-            #                 ias_[jj][ii][kk] = fix
-            #             ias_[jj][ii] = DataFrame(ias_[jj][ii])
+            # # think of a way to fix the max_pos problem
+            # for idx, meas in depmeas.iterrows():
+            #     if idx == 0:
+            #         pass
+            #     if meas['fix_pos'] <
 
-
+        # adapt from above
         elif depmeas == 'sac':
             depmeas = raw.discrete['saccades']
             labels = ['eye', 'stime', 'etime', 'sxp', 'syp',
@@ -142,10 +140,12 @@ class InterestAreas(object):
                             ias_[jj][ii][kk] = fix
                         ias_[jj][ii] = DataFrame(ias_[jj][ii])
 
-        if ia_labels is None:
-            ia_labels = list(ias[:, -1])
-        # ordered dict
-        self._data = [IA(zip(ia_labels, trial)) for trial in ias_]
+        if ia_labels is not None:
+            ias[:, -1] = ias_labels
+        # DataFrame
+        self._data = depmeas
+        self._ias = dict([(ii[-1], int(ii[1])) for ii in ias])
+        self.ia_labels = sorted(self._ias, self._ias.get)
 
     def __repr__(self):
         return '<IA | {0} Trials x {1} IAs>'.format(self.n_epochs, self.n_ias)
@@ -159,12 +159,12 @@ class InterestAreas(object):
 
     def __getitem__(self, idx):
         if isinstance(idx, string_types):
-            if idx not in self._data[0]:
+            if idx not in self._ias:
                 raise KeyError("'%s' is not found." % idx)
-            data = concat([datum[idx] for datum in self._data])
+            data = self._data[self._data['fix_pos'] == self._ias[idx]]
             return data
         elif isinstance(idx, int):
-            data = self._data[idx]
+            data = self._data[idx:idx + 1]
             return data
         elif isinstance(idx, slice):
             inst = copy(self)
@@ -173,14 +173,6 @@ class InterestAreas(object):
             return inst
         else:
             raise TypeError('index must be an int, string, or slice')
-
-
-class IA(OrderedDict):
-    def __init__(self, entry):
-        super(IA, self).__init__(entry)
-
-    def __repr__(self):
-        return '<Interest Areas: %s>' % ', '.join(self.keys())
 
 
 def read_ia(filename):
