@@ -6,7 +6,7 @@
 from copy import copy
 import numpy as np
 try:
-    from pandas import DataFrame, concat
+    from pandas import DataFrame, concat, notnull
 except ImportError:
     raise ImportError('Pandas is required for InterestAreas.')
 
@@ -41,10 +41,6 @@ class InterestAreas(object):
     """
     def __init__(self, raw, ias, ia_labels=None, depmeas='fix'):
 
-        # TEMP
-        if depmeas != 'fix':
-            raise NotImplementedError
-
         if isinstance(raw, string_types):
             raw = read_raw(raw)
         elif not isinstance(raw, _BaseRaw):
@@ -65,85 +61,57 @@ class InterestAreas(object):
         self.trial_durations = [end - start for start, end in trials]
 
         if depmeas == 'fix':
-            depmeas = raw.discrete['fixations']
+            data = raw.discrete['fixations']
             labels = ['eye', 'stime', 'etime', 'axp', 'ayp']
-            depmeas = DataFrame(depmeas)
-            # adding new columns
-            # fix_pos is the IA number
-            fix_pos = np.ones((len(depmeas), 1)) * np.nan
-            # max_pos is the maximum IA visited
-            max_pos = np.ones((len(depmeas), 1)) * np.nan
-            trial_no = np.ones((len(depmeas), 1)) * np.nan
+        elif depmeas == 'sac':
+            data = raw.discrete['saccades']
+            labels = ['eye', 'stime', 'etime', 'sxp', 'syp',
+                      'exp', 'eyp', 'pv']
+        else:
+            raise NotImplementedError
+        data = DataFrame(data)
+        data.columns = labels
 
-            for idx, meas in depmeas.iterrows():
-                for jj, trial in enumerate(trials):
-                    tstart, tend = trial
-                    # max_ia is incorrect atm
-                    max_ia = 0
-                    if tstart < meas['stime'] * 1000 < tend:
-                        trial_no[idx] = jj
-                        # RECTANGLE id left top right bottom [label]
+        # adding new columns, initializing to np.nan
+        # fix_pos is the IA number
+        fix_pos = np.ones((len(data), 1)) * np.nan
+        trial_no = np.ones((len(data), 1)) * np.nan
+
+        for idx, meas in data.iterrows():
+            for jj, trial in enumerate(trials):
+                tstart, tend = trial
+                if tstart < meas['stime'] * 1000 < tend:
+                    trial_no[idx] = jj
+                    # RECTANGLE id left top right bottom [label]
+                    if depmeas == 'fix':
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
                             if int(ia_left) < int(meas['axp']) < int(ia_right) \
                             and int(ia_top) < int(meas['ayp']) < int(ia_bottom):
                                 fix_pos[idx] = ii
-                                # TO-DO: think about cases where fix outside
-                                # interest areas
-                                if ii > max_ia:
-                                    max_ia = ii
-                                    max_pos[idx] = max_ia
-                                else:
-                                    max_pos[idx] = max_ia
                                 break
-                        break
-            dur = depmeas['etime'] - depmeas['stime']
-            depmeas = map(DataFrame, [depmeas, dur, fix_pos, max_pos, trial_no])
-            labels.extend(['dur', 'fix_pos', 'max_pos', 'trial_no'])
-            depmeas = concat(depmeas, axis=1)
-            depmeas.columns = labels
-
-            # # think of a way to fix the max_pos problem
-            # for idx, meas in depmeas.iterrows():
-            #     if idx == 0:
-            #         pass
-            #     if meas['fix_pos'] <
-
-        # adapt from above
-        elif depmeas == 'sac':
-            depmeas = raw.discrete['saccades']
-            labels = ['eye', 'stime', 'etime', 'sxp', 'syp',
-                      'exp', 'eyp', 'pv']
-            depmeas = DataFrame(depmeas)
-            for _, meas in depmeas.iterrows():
-                for jj, trial in enumerate(trials):
-                    tstart, tend = trial
-                    if tstart < meas['stime'] * 1000 < tend:
-                        fix_order[jj].append(int(meas['stime'] * 1000))
-                        # RECTANGLE id left top right bottom [label]
+                    elif depmeas == 'sac':
                         for ii, ia in enumerate(ias):
                             _, _, ia_left, ia_top, ia_right, ia_bottom, _ = ia
                             if int(ia_left) < int(meas['sxp']) < int(ia_right) \
                             and int(ia_top) < int(meas['syp']) < int(ia_bottom):
-                                ias_[jj][ii].append(meas)
-            labels.append('order')
-            n_meas = len(labels)
-            for jj in range(n_epochs):
-                for ii in range(n_ias):
-                    if isinstance(ias_[jj][ii], list) and \
-                        len(ias_[jj][ii]) == 0:
-                        ias_[jj][ii] = DataFrame(np.ones((1, n_meas)) *
-                                                        np.nan, columns=labels)
-                    else:
-                        for kk, fix in enumerate(ias_[jj][ii]):
-                            fix['order'] = kk
-                            ias_[jj][ii][kk] = fix
-                        ias_[jj][ii] = DataFrame(ias_[jj][ii])
+                                fix_pos[idx] = ii
+                    break
+
+        dur = data['etime'] - data['stime']
+        data = map(DataFrame, [data, dur, fix_pos, trial_no])
+        labels.extend(['dur', 'fix_pos', 'trial_no'])
+        data = concat(data, axis=1)
+        data.columns = labels
+
+        # drop all fixations outside of the interest areas
+        data = data[notnull(data['fix_pos'])]
+        data = data.reset_index()
 
         if ia_labels is not None:
             ias[:, -1] = ias_labels
         # DataFrame
-        self._data = depmeas
+        self._data = data
         self._ias = dict([(ii[-1], int(ii[1])) for ii in ias])
         self.ia_labels = sorted(self._ias, self._ias.get)
 
@@ -164,7 +132,8 @@ class InterestAreas(object):
             data = self._data[self._data['fix_pos'] == self._ias[idx]]
             return data
         elif isinstance(idx, int):
-            data = self._data[idx:idx + 1]
+            idx = self._data['trial_no'] == idx
+            data = self._data[idx]
             return data
         elif isinstance(idx, slice):
             inst = copy(self)
@@ -186,21 +155,105 @@ def read_ia(filename):
 
     return ias
 
-class ReadingMixin(object):
+class Reading(InterestAreas):
+    """ Create interest area summaries for Raw
+
+    Parameters
+    ----------
+    raw : filename | instance of Raw
+        The filename of the raw file or a Raw instance to create InterestAreas
+        from.
+    ias : str | ndarray (n_ias, 7)
+        The interest areas. If str, this is the path to the interest area file.
+        Only .ias formats are currently supported. If array, number of row must
+        be number of interest areas. The columns are as follows:
+        # RECTANGLE id left top right bottom [label]
+    ia_labels : None | list of str
+        Interest area name. If None, the labels from the interest area file
+        will be used.
+    depmeas : str
+        Dependent measure. 'fix' for fixations, 'sac' for saccades.
+
+    Returns
+    -------
+    epochs : instance of Epochs
+        The epoched dataset.
+        Trial x IAS x fixations/saccades
+    """
+    def __init__(self, raw, ias, ia_labels=None, depmeas='fix'):
+
+        super(Reading, self).__init__(
+            raw=raw, ias=ias, ia_labels=ia_labels, depmeas=depmeas)
+
+        labels = self._data.columns.get_values()
+        max_pos, gaze, first_fix = self._define_gaze()
+        data = map(DataFrame, [max_pos, gaze, first_fix])
+        data.insert(0, self._data)
+        labels = np.hstack((labels, ['max_pos', 'gaze', 'first_fix']))
+        data = concat(data, axis=1)
+        data.columns = labels
+        self._data = data
+
+    def _define_max_pos(self):
+        data = self._data
+        # # create a max position using lag
+        # max_pos is the maximum IA visited
+        max_pos = np.ones((len(data), 1)) * np.nan
+        max_pos[0] = data.iloc[0]['fix_pos']
+        for idx, meas in enumerate(data.iterrows()):
+            _, meas = meas
+            if meas['trial_no'] != data.iloc[idx - 1]['trial_no']:
+                max_pos[idx] = meas['fix_pos']
+            else:
+                if meas['fix_pos'] > max_pos[idx - 1]:
+                    max_pos[idx] = meas['fix_pos']
+                else:
+                    max_pos[idx] = max_pos[idx - 1]
+
+        return max_pos
+
     def _define_gaze(self):
-        fix_num = trial['order']
-        maxword = np.maximum.accumulate(trial['order'])
-        gaze = fix_num <= maxword
+        max_pos = self._define_max_pos()
+        data = self._data
+        # initializing
+        gaze = np.zeros((len(self._data), 1))
+        gaze[0] = 1
+        gaze_ias = np.zeros((self.n_ias, 1))
+        ref_trial = data.iloc[0]['trial_no']
+        first_fix = np.zeros((len(self._data), 1))
+
+        for idx in range(1, len(data)):
+            meas = data.iloc[idx]
+            prev_meas = data.iloc[idx - 1]
+            if meas['trial_no'] > ref_trial:
+                gaze_ias = np.zeros((self.n_ias, 1))
+                ref_trial = meas['trial_no']
+            if meas['fix_pos'] == max_pos[idx]:
+                if gaze_ias[meas['fix_pos']] == 0:
+                    gaze_ias[meas['fix_pos']] = 1
+                    gaze[idx] = 1
+                    first_fix[idx] = 1
+                elif gaze[idx - 1] == 1 and \
+                    meas['fix_pos'] == prev_meas['fix_pos']:
+                    gaze[idx] = 1
+                # else:
+                #     gaze[idx] = 0
+
+        return max_pos, gaze, first_fix
 
     def get_first_fix(self, ia, idx=None):
+        data = self._data[self._data['first_fix'] == 1]
+        data = data[data['fix_pos'] == ia]
 
-        return self
+        return data
+
+    def get_gaze_duration(self, ia, idx=None):
+        data = self._data[self._data['gaze'] == 1]
+        data = self._data.groupby(level=['ia']).sum()
+
+        return data
+
     def get_go_past(self, ia, idx=None):
-        fixs = self[ia]
-        if idx is None:
-            idx = np.arange(self.shape[0])
-        fixs = fixs[idx]
-        trials = np.unique(fixs['trial'])
-        for ii in trials:
-            trial = trials[trials['trial'] == ii]
-            maxword = np.maximum.accumulate(trial['order'])
+        data = self._data[self._data['max_pos'] == ia]
+
+        return data
