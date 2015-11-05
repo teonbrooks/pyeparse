@@ -14,7 +14,25 @@ from ._fixes import string_types, OrderedDict
 from ._baseraw import read_raw, _BaseRaw
 
 
-class InterestAreas(object):
+terms = {
+         'index': 'The fixation order.',
+         'eye': '`0` corresponds to the left eye, `1` corresponds to the right,'
+                ' and `2` corresponds to binocular tracking.',
+        stime: 'Start time of fixation.',
+        etime: 'End time of fixation.',
+        axp: 'Average x-position',
+        ayp: 'Average y-position',
+        dur: 'Duration of fixation: `etime` - `stime`.',
+        fix_pos: 'Index of the interest area.',
+        trial: 'Trial Number.',
+        max_pos: 'Maximum position in a sequence.',
+        gaze: 'Boolean of the first time(s) fixating on a given item in a '
+               'sequence. Must also be the max position in the sequence.',
+        first_fix: 'Boolean of the very first fixation on a given item in a '
+                   'sequence. Must also be the max position in the sequence.'
+        }
+
+class InterestAreaReport(object):
     """ Create interest area summaries for Raw
 
     Parameters
@@ -35,9 +53,11 @@ class InterestAreas(object):
 
     Returns
     -------
-    epochs : instance of Epochs
-        The epoched dataset.
-        Trial x IAS x fixations/saccades
+    InterestAreaReport : an instance of InterestAreaReport
+        An Interest Area report. Fixations or Saccades are limited to the areas
+        described in `ias`. The fix/sacc are labeled in a given region
+        per trial.
+        Info is stored for Trial x IAS x fixations/saccades
     """
     def __init__(self, raw, ias, ia_labels=None, depmeas='fix'):
 
@@ -50,7 +70,7 @@ class InterestAreas(object):
             ias = read_ia(ias)
 
         trial_ids = raw.find_events('TRIALID', 1)
-        self.n_epochs = n_epochs = trial_ids.shape[0]
+        self.n_trials = n_trials = trial_ids.shape[0]
         self.n_ias = n_ias = ias.shape[0]
         last = trial_ids[-1].copy()
         last[0] = str(int(last[0]) + 10000)
@@ -100,30 +120,33 @@ class InterestAreas(object):
 
         dur = data['etime'] - data['stime']
         data = map(DataFrame, [data, dur, fix_pos, trial_no])
-        labels.extend(['dur', 'fix_pos', 'trial_no'])
+        labels.extend(['dur', 'fix_pos', 'trial'])
         data = concat(data, axis=1)
         data.columns = labels
 
         # drop all fixations outside of the interest areas
         data = data[notnull(data['fix_pos'])]
         data = data.reset_index()
+        data.fix_pos = data.fix_pos.astype(int)
 
         if ia_labels is not None:
             ias[:, -1] = ias_labels
         # DataFrame
         self._data = data
         self._ias = dict([(ii[-1], int(ii[1])) for ii in ias])
-        self.ia_labels = sorted(self._ias, self._ias.get)
+        self.ia_labels = sorted(self._ias, key=self._ias.get)
 
     def __repr__(self):
-        return '<IA | {0} Trials x {1} IAs>'.format(self.n_epochs, self.n_ias)
+        ee, ii = self.n_trials, self.n_ias
+
+        return '<InterestAreas | {0} Trials x {1} IAs>'.format(ee, ii)
 
     def __len__(self):
         return len(self._data)
 
     @property
     def shape(self):
-        return (self.n_epochs, self.n_ias)
+        return (self.n_trials, self.n_ias)
 
     def __getitem__(self, idx):
         if isinstance(idx, string_types):
@@ -132,13 +155,13 @@ class InterestAreas(object):
             data = self._data[self._data['fix_pos'] == self._ias[idx]]
             return data
         elif isinstance(idx, int):
-            idx = self._data['trial_no'] == idx
+            idx = self._data['trial'] == idx
             data = self._data[idx]
             return data
         elif isinstance(idx, slice):
             inst = copy(self)
             inst._data = self._data[idx]
-            inst.n_epochs = len(inst._data)
+            inst.n_trials = len(inst._data)
             return inst
         else:
             raise TypeError('index must be an int, string, or slice')
@@ -176,9 +199,10 @@ class Reading(InterestAreas):
 
     Returns
     -------
-    epochs : instance of Epochs
-        The epoched dataset.
+    Reading : instance of Reading class
+        An Interest Area report with methods for reading time measurements.
         Trial x IAS x fixations/saccades
+
     """
     def __init__(self, raw, ias, ia_labels=None, depmeas='fix'):
 
@@ -202,7 +226,7 @@ class Reading(InterestAreas):
         max_pos[0] = data.iloc[0]['fix_pos']
         for idx, meas in enumerate(data.iterrows()):
             _, meas = meas
-            if meas['trial_no'] != data.iloc[idx - 1]['trial_no']:
+            if meas['trial'] != data.iloc[idx - 1]['trial']:
                 max_pos[idx] = meas['fix_pos']
             else:
                 if meas['fix_pos'] > max_pos[idx - 1]:
@@ -216,18 +240,18 @@ class Reading(InterestAreas):
         max_pos = self._define_max_pos()
         data = self._data
         # initializing
-        gaze = np.zeros((len(self._data), 1))
+        gaze = np.zeros((len(self._data), 1), int)
         gaze[0] = 1
         gaze_ias = np.zeros((self.n_ias, 1))
-        ref_trial = data.iloc[0]['trial_no']
-        first_fix = np.zeros((len(self._data), 1))
+        ref_trial = data.iloc[0]['trial']
+        first_fix = np.zeros((len(self._data), 1), int)
 
         for idx in range(1, len(data)):
             meas = data.iloc[idx]
             prev_meas = data.iloc[idx - 1]
-            if meas['trial_no'] > ref_trial:
-                gaze_ias = np.zeros((self.n_ias, 1))
-                ref_trial = meas['trial_no']
+            if meas['trial'] > ref_trial:
+                gaze_ias = np.zeros((self.n_ias, 1), int)
+                ref_trial = meas['trial']
             if meas['fix_pos'] == max_pos[idx]:
                 if gaze_ias[meas['fix_pos']] == 0:
                     gaze_ias[meas['fix_pos']] = 1
@@ -241,19 +265,27 @@ class Reading(InterestAreas):
 
         return max_pos, gaze, first_fix
 
-    def get_first_fix(self, ia, idx=None):
+    def get_first_fix(self, ia):
         data = self._data[self._data['first_fix'] == 1]
         data = data[data['fix_pos'] == ia]
 
         return data
 
-    def get_gaze_duration(self, ia, idx=None):
-        data = self._data[self._data['gaze'] == 1]
-        data = self._data.groupby(level=['ia']).sum()
+    def get_dwell_time(self, ia):
+        data = self._data[self._data['fix_pos'] == ia]
+        data = data.groupby(by=['trial']).sum()
 
         return data
 
-    def get_go_past(self, ia, idx=None):
+    def get_gaze_duration(self, ia):
+        data = self._data[self._data['gaze'] == 1]
+        data = data[data['fix_pos'] == ia]
+        data = data.groupby(by=['trial']).sum()
+
+        return data
+
+    def get_go_past(self, ia):
         data = self._data[self._data['max_pos'] == ia]
+        data = data.groupby(by=['trial']).sum()
 
         return data

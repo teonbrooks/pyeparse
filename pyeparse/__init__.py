@@ -8,6 +8,5 @@ from .hd5._raw import RawHD5  # noqa
 from ._baseraw import read_raw  # noqa
 from .epochs import Epochs  # noqa
 from . import viz  # noqa
-from .ia import InterestAreas  # noqa
 
 __version__ = '0.2.0.dev0'
