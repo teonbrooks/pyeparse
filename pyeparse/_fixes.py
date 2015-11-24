@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # Authors: Denis Engemann <denis.engemann@gmail.com>
-#          Teon Brooks <teon.brooks@gmail.com>
 #
 # License: BSD (3-clause)
 
@@ -30,15 +29,6 @@ try:
 except ImportError:  # py3 has renamed this
     from io import StringIO  # noqa
 from io import BytesIO  # noqa
-
-
-# -*- coding: utf-8 -*-
-from sys import version_info
-
-if version_info >= (2, 7):
-    from collections import OrderedDict
-else:
-    from ._ordereddict import OrderedDict  # noqa
 
 # -*- coding: utf-8 -*-
 
