@@ -10,7 +10,7 @@ try:
 except ImportError:
     raise ImportError('Pandas is required for Reading.')
 
-from .interest_area import InterestArea
+from .interest_areas import InterestAreas
 
 
 """Terminology
@@ -27,7 +27,7 @@ terms = {
          }
 
 
-class Reading(InterestArea):
+class Reading(InterestAreas):
     """ Create interest area summaries for Raw
 
     Parameters

@@ -32,7 +32,7 @@ terms = {
                    'sequence. Must also be the max position in the sequence.'
         }
 
-class InterestArea(object):
+class InterestAreas(object):
     """ Create interest area summaries for Raw
 
     Parameters
@@ -55,8 +55,8 @@ class InterestArea(object):
 
     Returns
     -------
-    InterestArea : an instance of InterestArea
-        An Interest Area report. Fixations or Saccades are limited to the areas
+    InterestAreas : an instance of InterestAreas
+        An Interest Areas report. Fixations or Saccades are limited to the areas
         described in `ias`. The fix/sacc are labeled in a given region
         per trial.
         Info is stored for Trial x IAS x fixations/saccades
@@ -144,7 +144,7 @@ class InterestArea(object):
     def __repr__(self):
         ee, ii = self.n_trials, self.n_ias
 
-        return '<InterestArea | {0} Trials x {1} IAs>'.format(ee, ii)
+        return '<InterestAreas | {0} Trials x {1} IAs>'.format(ee, ii)
 
     def __len__(self):
         return len(self._data)
